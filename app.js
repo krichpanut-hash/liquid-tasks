@@ -75,6 +75,11 @@
     editClose: $('#edit-close'),
     editCancel: $('#edit-cancel'),
 
+    deleteDialog: $('#delete-dialog'),
+    deleteTaskTitle: $('#delete-task-title'),
+    deleteCancel: $('#delete-cancel'),
+    deleteConfirm: $('#delete-confirm'),
+
     toast: $('#toast'),
     toastText: $('#toast-text'),
     toastUndo: $('#toast-undo'),
@@ -90,6 +95,7 @@
     query: '',
     sort: 'priority',   // priority | due | newest | oldest | title
     editingId: null,
+    deletingId: null,   // งานที่รอยืนยันการลบ
     flashId: null,      // งานที่เพิ่งเพิ่ม (ใช้เล่นแอนิเมชัน)
     firstRender: true,
     toast: null,        // { timer, onUndo }
@@ -677,7 +683,7 @@
     const item = btn.closest('.task');
     if (!item) return;
     if (btn.dataset.action === 'edit') openEdit(item.dataset.id);
-    else if (btn.dataset.action === 'delete') deleteTask(item.dataset.id);
+    else if (btn.dataset.action === 'delete') confirmDelete(item.dataset.id);
   });
   els.list.addEventListener('change', (e) => {
     if (!e.target.matches('.check-input')) return;
@@ -749,6 +755,24 @@
   els.editClose.addEventListener('click', () => closeDialog(els.editDialog));
   els.editCancel.addEventListener('click', () => closeDialog(els.editDialog));
 
+  /* ---------- ยืนยันการลบงาน ---------- */
+  function confirmDelete(id) {
+    const task = state.tasks.find((t) => t.id === id);
+    if (!task) return;
+    state.deletingId = id;
+    els.deleteTaskTitle.textContent = truncate(task.title, 60);
+    openDialog(els.deleteDialog);
+    // โฟกัสปุ่มยกเลิกไว้ก่อน กัน Enter แล้วลบโดยไม่ตั้งใจ
+    requestAnimationFrame(() => els.deleteCancel.focus());
+  }
+  els.deleteConfirm.addEventListener('click', () => {
+    const id = state.deletingId;
+    closeDialog(els.deleteDialog);
+    if (id) deleteTask(id);
+  });
+  els.deleteCancel.addEventListener('click', () => closeDialog(els.deleteDialog));
+  els.deleteDialog.addEventListener('close', () => { state.deletingId = null; });
+
   /* ---------- Toast: เลิกทำ ---------- */
   els.toastUndo.addEventListener('click', () => {
     const current = state.toast;
@@ -810,6 +834,7 @@
     renderPriorityPicker(els.editPriorityPicker, 'edit-priority', DEFAULT_PRIORITY);
     setupDialog(els.addSheet);
     setupDialog(els.editDialog);
+    setupDialog(els.deleteDialog);
     placeAddSection(compactMq.matches);
     updateTodayLabel();
     scheduleMidnightRefresh();

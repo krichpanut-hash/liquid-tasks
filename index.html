@@ -201,6 +201,21 @@
     </form>
   </dialog>
 
+  <!-- Dialog ยืนยันการลบงาน -->
+  <dialog class="dialog dialog-confirm glass" id="delete-dialog" aria-labelledby="delete-heading" aria-describedby="delete-text">
+    <div class="confirm-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+    </div>
+    <h2 id="delete-heading">ลบงานนี้หรือไม่?</h2>
+    <p class="confirm-text" id="delete-text">
+      งาน "<strong id="delete-task-title"></strong>" จะถูกลบออกจากรายการ
+    </p>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-ghost" id="delete-cancel">ยกเลิก</button>
+      <button type="button" class="btn btn-danger" id="delete-confirm">ลบงาน</button>
+    </div>
+  </dialog>
+
   <!-- Toast แจ้งเตือน + ปุ่มเลิกทำ -->
   <div class="toast glass" id="toast" role="status" aria-live="polite" hidden>
     <span id="toast-text"></span>
