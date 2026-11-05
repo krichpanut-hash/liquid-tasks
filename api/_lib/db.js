@@ -6,7 +6,9 @@ import { neon } from '@neondatabase/serverless';
 
 const CONNECTION_STRING = process.env.DATABASE_URL || process.env.POSTGRES_URL || '';
 
-const BOARD_ID_RE = /^[A-Za-z0-9_-]{16,64}$/;
+/** ทุกคนใช้รายการงานชุดเดียวกัน (ไม่มีการแยกผู้ใช้) */
+export const SHARED_BOARD_ID = 'shared';
+
 const TASK_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -74,12 +76,6 @@ export function readBody(req) {
     }
   }
   return body;
-}
-
-export function getBoardId(req) {
-  const header = req.headers['x-board-id'];
-  const value = Array.isArray(header) ? header[0] : header;
-  return typeof value === 'string' && BOARD_ID_RE.test(value) ? value : null;
 }
 
 export class HttpError extends Error {

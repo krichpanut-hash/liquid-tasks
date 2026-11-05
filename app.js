@@ -1,5 +1,5 @@
 /* =========================================================
-   Liquid Tasks — ตรรกะของแอป (ไม่ใช้ไลบรารีภายนอก)
+   Tasks manager — ตรรกะของแอป (ไม่ใช้ไลบรารีภายนอก)
    ข้อมูลหลักเก็บบน Neon Postgres ผ่าน /api/tasks
    localStorage ใช้เป็นแคช + โหมดสำรองเมื่อเชื่อมต่อคลาวด์ไม่ได้
    ========================================================= */
@@ -8,9 +8,8 @@
 
   const STORAGE_KEY = 'liquid-tasks:v1';     // แคชรายการงานในเครื่อง
   const PREFS_KEY = 'liquid-tasks:prefs';
-  const BOARD_KEY = 'liquid-tasks:board';    // รหัสบอร์ด (กุญแจเข้าถึงข้อมูลบนคลาวด์)
-  const BOARD_ID_RE = /^[A-Za-z0-9_-]{16,64}$/;
   const API_BASE = '/api/tasks';
+  const POLL_MS = 15000;                     // ดึงข้อมูลล่าสุดเป็นระยะ เพื่อเห็นการแก้ไขจากเบราว์เซอร์/อุปกรณ์อื่น
   const TOAST_MS = 6000;
 
   const PRIORITIES = {
@@ -82,13 +81,6 @@
 
     sync: $('#sync-status'),
     syncText: $('#sync-text'),
-    shareBtn: $('#share-btn'),
-    shareDialog: $('#share-dialog'),
-    shareClose: $('#share-close'),
-    shareUrl: $('#share-url'),
-    shareCopy: $('#share-copy'),
-    shareBoard: $('#share-board'),
-    shareOffline: $('#share-offline'),
   };
 
   const state = {
@@ -104,7 +96,7 @@
     mode: 'local',      // remote = ซิงก์กับฐานข้อมูล | local = บันทึกในเครื่องเท่านั้น
     loading: false,     // กำลังโหลดข้อมูลครั้งแรกจากคลาวด์
     pending: 0,         // จำนวนคำขอบันทึกที่ค้างอยู่
-    boardId: null,
+    version: 0,         // เพิ่มทุกครั้งที่มีการแก้ไขในเครื่อง ใช้กันข้อมูลจากการ poll ทับของใหม่
   };
 
   /* ---------- วันที่ ---------- */
@@ -176,53 +168,13 @@
     }
   }
 
-  /* ---------- รหัสบอร์ด ----------
-     แต่ละเบราว์เซอร์จะได้รหัสบอร์ดแบบสุ่ม (เดาไม่ได้) ใช้เป็นกุญแจเข้าถึงงานบนคลาวด์
-     เปิดลิงก์ ?board=<รหัส> บนอุปกรณ์อื่นเพื่อใช้บอร์ดเดียวกัน */
-  function resolveBoardId() {
-    const url = new URL(window.location.href);
-    const fromUrl = url.searchParams.get('board');
-    let stored = null;
-    try { stored = localStorage.getItem(BOARD_KEY); } catch { /* ไม่เป็นไร */ }
-
-    let id = null;
-    let source = 'stored';
-    if (fromUrl && BOARD_ID_RE.test(fromUrl)) {
-      id = fromUrl;
-      source = 'url';
-    } else if (stored && BOARD_ID_RE.test(stored)) {
-      id = stored;
-    } else {
-      id = uid();
-      source = 'new';
-    }
-    try { localStorage.setItem(BOARD_KEY, id); } catch { /* ไม่เป็นไร */ }
-
-    if (fromUrl) {
-      // ซ่อนรหัสออกจากแถบที่อยู่หลังรับค่าแล้ว
-      url.searchParams.delete('board');
-      window.history.replaceState(null, '', url.pathname + url.search + url.hash);
-    }
-    return { id, source, changed: source === 'url' && stored !== id };
-  }
-
-  function shareUrl() {
-    const url = new URL(window.location.href);
-    url.search = '';
-    url.hash = '';
-    url.searchParams.set('board', state.boardId);
-    return url.toString();
-  }
-
   /* ---------- API (Neon Postgres ผ่าน Vercel Functions) ---------- */
   const api = {
     async request(method, path = '', body) {
       const res = await fetch(`${API_BASE}${path}`, {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Board-Id': state.boardId,
-        },
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       let data = null;
@@ -264,6 +216,7 @@
       คำขอจะถูกส่งทีละรายการตามลำดับ เพื่อไม่ให้ "ลบ" กับ "เลิกทำ" แซงกัน */
   let syncQueue = Promise.resolve();
   function persist(action) {
+    state.version += 1;
     cacheTasks();
     if (state.mode !== 'remote' || typeof action !== 'function') return syncQueue;
     state.pending += 1;
@@ -293,6 +246,24 @@
       console.error('โหลดข้อมูลจากคลาวด์ไม่สำเร็จ', err);
       state.mode = 'local';
       showToast('เชื่อมต่อคลาวด์ไม่ได้ สลับเป็นโหมดบันทึกในเครื่อง');
+    }
+  }
+
+  /** ดึงข้อมูลล่าสุดแบบเงียบ ๆ เพื่อเห็นการแก้ไขจากเบราว์เซอร์/อุปกรณ์อื่น
+      ข้ามถ้ามีการแก้ไขในเครื่องระหว่างรอผล และ render ใหม่เฉพาะเมื่อข้อมูลเปลี่ยน */
+  async function pollServer() {
+    if (state.mode !== 'remote' || state.pending > 0 || document.visibilityState !== 'visible') return;
+    const startVersion = state.version;
+    try {
+      const { tasks } = await api.list();
+      if (state.version !== startVersion || state.pending > 0) return;
+      const next = tasks.map(normalizeTask).filter(Boolean);
+      if (JSON.stringify(next) === JSON.stringify(state.tasks)) return;
+      state.tasks = next;
+      cacheTasks();
+      render();
+    } catch (err) {
+      console.warn('ดึงข้อมูลล่าสุดไม่สำเร็จ จะลองใหม่รอบถัดไป', err);
     }
   }
   function loadPrefs() {
@@ -806,46 +777,16 @@
   });
   els.sheetClose.addEventListener('click', () => closeDialog(els.addSheet));
 
-  /* ---------- ใช้งานบนอุปกรณ์อื่น (แชร์ลิงก์บอร์ด) ---------- */
-  function openShareDialog() {
-    els.shareUrl.value = shareUrl();
-    els.shareBoard.textContent = state.boardId;
-    els.shareOffline.hidden = state.mode === 'remote';
-    openDialog(els.shareDialog);
-  }
-  async function copyShareUrl() {
-    const text = els.shareUrl.value;
-    let copied = false;
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
-        copied = true;
-      }
-    } catch { /* ใช้วิธีสำรองด้านล่าง */ }
-    if (!copied) {
-      els.shareUrl.focus();
-      els.shareUrl.select();
-      try { copied = document.execCommand('copy'); } catch { copied = false; }
-    }
-    showToast(copied ? 'คัดลอกลิงก์แล้ว นำไปเปิดบนอุปกรณ์อื่นได้เลย' : 'คัดลอกอัตโนมัติไม่ได้ กรุณาคัดลอกลิงก์ด้วยตนเอง');
-  }
-  els.shareBtn.addEventListener('click', openShareDialog);
-  els.shareClose.addEventListener('click', () => closeDialog(els.shareDialog));
-  els.shareCopy.addEventListener('click', copyShareUrl);
-  els.shareUrl.addEventListener('focus', () => els.shareUrl.select());
-
   /* ---------- ซิงก์ข้ามแท็บ + รีเฟรชตอนเที่ยงคืน ---------- */
   window.addEventListener('storage', (e) => {
     if (e.key !== STORAGE_KEY) return;
     state.tasks = loadCache() || [];
     render();
   });
-  // กลับมาที่แท็บนี้อีกครั้ง → ดึงข้อมูลล่าสุดจากคลาวด์ (เผื่อแก้จากอุปกรณ์อื่น)
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && state.mode === 'remote' && state.pending === 0) {
-      refreshFromServer();
-    }
-  });
+  // กลับมาที่แท็บนี้อีกครั้ง หรือครบรอบเวลา → ดึงข้อมูลล่าสุดจากคลาวด์ (เผื่อแก้จากเบราว์เซอร์/อุปกรณ์อื่น)
+  document.addEventListener('visibilitychange', pollServer);
+  window.addEventListener('focus', pollServer);
+  setInterval(pollServer, POLL_MS);
   function updateTodayLabel() {
     els.todayLabel.textContent = longDateFmt.format(new Date());
   }
@@ -869,15 +810,12 @@
     renderPriorityPicker(els.editPriorityPicker, 'edit-priority', DEFAULT_PRIORITY);
     setupDialog(els.addSheet);
     setupDialog(els.editDialog);
-    setupDialog(els.shareDialog);
     placeAddSection(compactMq.matches);
     updateTodayLabel();
     scheduleMidnightRefresh();
 
-    // 1) รหัสบอร์ด + แคชในเครื่อง → แสดงผลทันที
-    const board = resolveBoardId();
-    state.boardId = board.id;
-    const cached = board.changed ? null : loadCache(); // เปลี่ยนบอร์ดจากลิงก์ → ไม่ใช้แคชของบอร์ดเก่า
+    // 1) แคชในเครื่อง → แสดงผลทันที
+    const cached = loadCache();
     state.tasks = cached || [];
     state.loading = true;
     setSyncStatus('syncing');
@@ -886,17 +824,8 @@
     // 2) โหลดจากคลาวด์
     try {
       const { tasks } = await api.list();
-      let remote = tasks.map(normalizeTask).filter(Boolean);
-
-      // ครั้งแรกที่เครื่องนี้ใช้งานคลาวด์: ถ้าบอร์ดยังว่างแต่มีงานในเครื่องอยู่แล้ว ให้ย้ายขึ้นคลาวด์
-      if (board.source === 'new' && remote.length === 0 && cached && cached.length > 0) {
-        const created = await api.create(cached);
-        remote = created.tasks.map(normalizeTask).filter(Boolean);
-        showToast(`ย้ายงาน ${remote.length} รายการจากเครื่องขึ้นคลาวด์แล้ว`);
-      }
-
       state.mode = 'remote';
-      state.tasks = remote;
+      state.tasks = tasks.map(normalizeTask).filter(Boolean);
       cacheTasks();
     } catch (err) {
       // ใช้ไม่ได้ (เช่น ยังไม่ได้ตั้งค่า DATABASE_URL หรือออฟไลน์) → โหมดบันทึกในเครื่อง

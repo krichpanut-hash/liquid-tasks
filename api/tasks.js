@@ -1,15 +1,15 @@
 /* =========================================================
    /api/tasks
-   GET            → รายการงานทั้งหมดของบอร์ด
-   POST           → สร้างงาน (ออบเจกต์เดียวหรืออาร์เรย์) ถ้ามี id ซ้ำจะอัปเดตแทน (ใช้ตอนเลิกทำ/ย้ายข้อมูล)
-   DELETE ?done=true → ลบงานที่เสร็จแล้วทั้งหมดของบอร์ด
-   ทุกคำขอต้องส่ง header X-Board-Id
+   GET            → รายการงานทั้งหมด
+   POST           → สร้างงาน (ออบเจกต์เดียวหรืออาร์เรย์) ถ้ามี id ซ้ำจะอัปเดตแทน (ใช้ตอนเลิกทำ)
+   DELETE ?done=true → ลบงานที่เสร็จแล้วทั้งหมด
+   ทุกคนใช้รายการงานชุดเดียวกัน
    ========================================================= */
 import {
+  SHARED_BOARD_ID,
   TASK_COLUMNS,
   HttpError,
   ensureSchema,
-  getBoardId,
   getSql,
   handleError,
   hasDatabase,
@@ -25,8 +25,7 @@ export default async function handler(req, res) {
   try {
     if (!hasDatabase()) throw new HttpError(503, 'ยังไม่ได้ตั้งค่าฐานข้อมูล (DATABASE_URL)');
 
-    const boardId = getBoardId(req);
-    if (!boardId) throw new HttpError(400, 'ต้องระบุ header X-Board-Id ให้ถูกต้อง');
+    const boardId = SHARED_BOARD_ID;
 
     await ensureSchema();
     const sql = getSql();

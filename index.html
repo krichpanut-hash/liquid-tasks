@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#f5f7fc">
-  <title>Liquid Tasks · จัดการงานของคุณ</title>
+  <title>Tasks manager · จัดการงานของคุณ</title>
   <meta name="description" content="เว็บจัดการรายการงาน ธีมสีขาวสไตล์ Liquid Glass รองรับคอมพิวเตอร์ แท็บเล็ต และมือถือ">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -28,7 +28,7 @@
           <svg viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg>
         </span>
         <div class="brand-text">
-          <h1>Liquid Tasks</h1>
+          <h1>Tasks manager</h1>
           <p id="today-label" class="muted">—</p>
         </div>
       </div>
@@ -48,10 +48,6 @@
           <span class="sync-dot" aria-hidden="true"></span>
           <span id="sync-text">กำลังเชื่อมต่อ…</span>
         </span>
-        <button type="button" class="btn btn-ghost btn-small" id="share-btn">
-          <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-          <span>อุปกรณ์อื่น</span>
-        </button>
       </div>
     </header>
 
@@ -203,31 +199,6 @@
         <button type="submit" class="btn btn-primary">บันทึก</button>
       </div>
     </form>
-  </dialog>
-
-  <!-- Dialog ใช้งานบนอุปกรณ์อื่น -->
-  <dialog class="dialog glass" id="share-dialog" aria-labelledby="share-heading">
-    <div class="card-head">
-      <h2 id="share-heading">ใช้งานบนอุปกรณ์อื่น</h2>
-      <button type="button" class="icon-btn" id="share-close" aria-label="ปิด">
-        <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
-      </button>
-    </div>
-    <p class="dialog-text">
-      เปิดลิงก์นี้บนมือถือ แท็บเล็ต หรือคอมเครื่องอื่น เพื่อใช้รายการงานชุดเดียวกัน
-      ข้อมูลทั้งหมดถูกเก็บบนคลาวด์และซิงก์ให้อัตโนมัติ
-    </p>
-    <div class="share-link">
-      <input id="share-url" type="text" readonly aria-label="ลิงก์สำหรับอุปกรณ์อื่น">
-      <button type="button" class="btn btn-primary" id="share-copy">คัดลอก</button>
-    </div>
-    <p class="dialog-text small muted">
-      ลิงก์นี้คือกุญแจเข้าถึงงานของคุณ — ใครมีลิงก์จะเห็นและแก้ไขงานได้ จึงไม่ควรโพสต์สาธารณะ<br>
-      รหัสบอร์ด: <code id="share-board"></code>
-    </p>
-    <p class="dialog-text small warn" id="share-offline" hidden>
-      ตอนนี้อยู่ในโหมดออฟไลน์ (บันทึกในเครื่อง) ลิงก์จะใช้ซิงก์ได้เมื่อเชื่อมต่อฐานข้อมูลสำเร็จ
-    </p>
   </dialog>
 
   <!-- Toast แจ้งเตือน + ปุ่มเลิกทำ -->

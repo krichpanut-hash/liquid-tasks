@@ -2,13 +2,12 @@
    /api/tasks/:id
    PATCH  → แก้ไขบางฟิลด์ของงาน (title, note, priority, due, done)
    DELETE → ลบงาน
-   ทุกคำขอต้องส่ง header X-Board-Id และแก้ได้เฉพาะงานในบอร์ดของตัวเอง
    ========================================================= */
 import {
+  SHARED_BOARD_ID,
   TASK_COLUMNS,
   HttpError,
   ensureSchema,
-  getBoardId,
   getSql,
   handleError,
   hasDatabase,
@@ -24,8 +23,7 @@ export default async function handler(req, res) {
   try {
     if (!hasDatabase()) throw new HttpError(503, 'ยังไม่ได้ตั้งค่าฐานข้อมูล (DATABASE_URL)');
 
-    const boardId = getBoardId(req);
-    if (!boardId) throw new HttpError(400, 'ต้องระบุ header X-Board-Id ให้ถูกต้อง');
+    const boardId = SHARED_BOARD_ID;
 
     const id = typeof req.query?.id === 'string' ? req.query.id : '';
     if (!TASK_ID_RE.test(id)) throw new HttpError(400, 'รหัสงานไม่ถูกต้อง');
