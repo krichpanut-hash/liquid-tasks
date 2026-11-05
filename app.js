@@ -1,12 +1,16 @@
 /* =========================================================
    Liquid Tasks — ตรรกะของแอป (ไม่ใช้ไลบรารีภายนอก)
-   ข้อมูลทั้งหมดเก็บใน localStorage ของเบราว์เซอร์
+   ข้อมูลหลักเก็บบน Neon Postgres ผ่าน /api/tasks
+   localStorage ใช้เป็นแคช + โหมดสำรองเมื่อเชื่อมต่อคลาวด์ไม่ได้
    ========================================================= */
 (() => {
   'use strict';
 
-  const STORAGE_KEY = 'liquid-tasks:v1';
+  const STORAGE_KEY = 'liquid-tasks:v1';     // แคชรายการงานในเครื่อง
   const PREFS_KEY = 'liquid-tasks:prefs';
+  const BOARD_KEY = 'liquid-tasks:board';    // รหัสบอร์ด (กุญแจเข้าถึงข้อมูลบนคลาวด์)
+  const BOARD_ID_RE = /^[A-Za-z0-9_-]{16,64}$/;
+  const API_BASE = '/api/tasks';
   const TOAST_MS = 6000;
 
   const PRIORITIES = {
@@ -75,6 +79,16 @@
     toast: $('#toast'),
     toastText: $('#toast-text'),
     toastUndo: $('#toast-undo'),
+
+    sync: $('#sync-status'),
+    syncText: $('#sync-text'),
+    shareBtn: $('#share-btn'),
+    shareDialog: $('#share-dialog'),
+    shareClose: $('#share-close'),
+    shareUrl: $('#share-url'),
+    shareCopy: $('#share-copy'),
+    shareBoard: $('#share-board'),
+    shareOffline: $('#share-offline'),
   };
 
   const state = {
@@ -87,6 +101,10 @@
     flashId: null,      // งานที่เพิ่งเพิ่ม (ใช้เล่นแอนิเมชัน)
     firstRender: true,
     toast: null,        // { timer, onUndo }
+    mode: 'local',      // remote = ซิงก์กับฐานข้อมูล | local = บันทึกในเครื่องเท่านั้น
+    loading: false,     // กำลังโหลดข้อมูลครั้งแรกจากคลาวด์
+    pending: 0,         // จำนวนคำขอบันทึกที่ค้างอยู่
+    boardId: null,
   };
 
   /* ---------- วันที่ ---------- */
@@ -139,22 +157,142 @@
     };
   }
 
-  /* ---------- จัดเก็บข้อมูล ---------- */
-  function loadTasks() {
+  /* ---------- แคชในเครื่อง (localStorage) ---------- */
+  function loadCache() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw === null) return null; // ยังไม่เคยใช้งาน
+      if (raw === null) return null; // ยังไม่เคยใช้งานบนเครื่องนี้
       const data = JSON.parse(raw);
       return Array.isArray(data) ? data.map(normalizeTask).filter(Boolean) : [];
     } catch {
       return [];
     }
   }
-  function saveTasks() {
+  function cacheTasks() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.tasks));
     } catch (err) {
-      console.warn('ไม่สามารถบันทึกข้อมูลได้', err);
+      console.warn('ไม่สามารถบันทึกแคชได้', err);
+    }
+  }
+
+  /* ---------- รหัสบอร์ด ----------
+     แต่ละเบราว์เซอร์จะได้รหัสบอร์ดแบบสุ่ม (เดาไม่ได้) ใช้เป็นกุญแจเข้าถึงงานบนคลาวด์
+     เปิดลิงก์ ?board=<รหัส> บนอุปกรณ์อื่นเพื่อใช้บอร์ดเดียวกัน */
+  function resolveBoardId() {
+    const url = new URL(window.location.href);
+    const fromUrl = url.searchParams.get('board');
+    let stored = null;
+    try { stored = localStorage.getItem(BOARD_KEY); } catch { /* ไม่เป็นไร */ }
+
+    let id = null;
+    let source = 'stored';
+    if (fromUrl && BOARD_ID_RE.test(fromUrl)) {
+      id = fromUrl;
+      source = 'url';
+    } else if (stored && BOARD_ID_RE.test(stored)) {
+      id = stored;
+    } else {
+      id = uid();
+      source = 'new';
+    }
+    try { localStorage.setItem(BOARD_KEY, id); } catch { /* ไม่เป็นไร */ }
+
+    if (fromUrl) {
+      // ซ่อนรหัสออกจากแถบที่อยู่หลังรับค่าแล้ว
+      url.searchParams.delete('board');
+      window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+    }
+    return { id, source, changed: source === 'url' && stored !== id };
+  }
+
+  function shareUrl() {
+    const url = new URL(window.location.href);
+    url.search = '';
+    url.hash = '';
+    url.searchParams.set('board', state.boardId);
+    return url.toString();
+  }
+
+  /* ---------- API (Neon Postgres ผ่าน Vercel Functions) ---------- */
+  const api = {
+    async request(method, path = '', body) {
+      const res = await fetch(`${API_BASE}${path}`, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Board-Id': state.boardId,
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      let data = null;
+      try { data = await res.json(); } catch { /* ไม่มี body */ }
+      if (!res.ok) {
+        const err = new Error((data && data.error) || `HTTP ${res.status}`);
+        err.status = res.status;
+        throw err;
+      }
+      return data;
+    },
+    list: () => api.request('GET'),
+    create: (tasks) => api.request('POST', '', tasks),
+    update: (id, patch) => api.request('PATCH', `/${encodeURIComponent(id)}`, patch),
+    remove: (id) => api.request('DELETE', `/${encodeURIComponent(id)}`),
+    removeDone: () => api.request('DELETE', '?done=true'),
+  };
+
+  /* ---------- สถานะการซิงก์ ---------- */
+  function setSyncStatus(status) {
+    const labels = {
+      syncing: 'กำลังซิงก์…',
+      online: 'ซิงก์กับคลาวด์แล้ว',
+      offline: 'ออฟไลน์ · บันทึกในเครื่อง',
+    };
+    els.sync.classList.remove('is-syncing', 'is-online', 'is-offline');
+    els.sync.classList.add(`is-${status}`);
+    els.syncText.textContent = labels[status] || '';
+    els.sync.title = status === 'offline'
+      ? 'เชื่อมต่อฐานข้อมูลไม่ได้ ข้อมูลจะถูกเก็บไว้ในเบราว์เซอร์นี้เท่านั้น'
+      : 'ข้อมูลของคุณถูกบันทึกบน Neon Postgres';
+  }
+  function settleSyncStatus() {
+    if (state.pending > 0) return;
+    setSyncStatus(state.mode === 'remote' ? 'online' : 'offline');
+  }
+
+  /** บันทึกแคชเสมอ และถ้าอยู่ในโหมดคลาวด์ให้ส่งการเปลี่ยนแปลงขึ้นเซิร์ฟเวอร์
+      คำขอจะถูกส่งทีละรายการตามลำดับ เพื่อไม่ให้ "ลบ" กับ "เลิกทำ" แซงกัน */
+  let syncQueue = Promise.resolve();
+  function persist(action) {
+    cacheTasks();
+    if (state.mode !== 'remote' || typeof action !== 'function') return syncQueue;
+    state.pending += 1;
+    setSyncStatus('syncing');
+    syncQueue = syncQueue
+      .then(() => action())
+      .catch(async (err) => {
+        console.error('บันทึกขึ้นคลาวด์ไม่สำเร็จ', err);
+        showToast('บันทึกขึ้นคลาวด์ไม่สำเร็จ กำลังโหลดข้อมูลล่าสุด…');
+        await refreshFromServer();
+      })
+      .finally(() => {
+        state.pending -= 1;
+        settleSyncStatus();
+      });
+    return syncQueue;
+  }
+
+  /** ดึงข้อมูลล่าสุดจากเซิร์ฟเวอร์มาแทนที่ (ใช้เมื่อซิงก์พลาด) */
+  async function refreshFromServer() {
+    try {
+      const { tasks } = await api.list();
+      state.tasks = tasks.map(normalizeTask).filter(Boolean);
+      cacheTasks();
+      render();
+    } catch (err) {
+      console.error('โหลดข้อมูลจากคลาวด์ไม่สำเร็จ', err);
+      state.mode = 'local';
+      showToast('เชื่อมต่อคลาวด์ไม่ได้ สลับเป็นโหมดบันทึกในเครื่อง');
     }
   }
   function loadPrefs() {
@@ -315,7 +453,10 @@
   function showEmptyState() {
     let title = 'ยังไม่มีงาน';
     let text = 'เพิ่มงานแรกของคุณได้เลย';
-    if (state.tasks.length > 0) {
+    if (state.loading) {
+      title = 'กำลังโหลดข้อมูล…';
+      text = 'กำลังดึงรายการงานจากคลาวด์';
+    } else if (state.tasks.length > 0) {
       if (state.query) {
         title = 'ไม่พบงานที่ค้นหา';
         text = `ไม่มีงานที่ตรงกับ "${state.query}"`;
@@ -421,14 +562,15 @@
     }
   }
 
-  /* ---------- การจัดการงาน ---------- */
+  /* ---------- การจัดการงาน ----------
+     ทุกการเปลี่ยนแปลงจะอัปเดตหน้าจอทันที (optimistic) แล้วค่อยส่งขึ้นคลาวด์ผ่าน persist() */
   function addTask(fields) {
     const task = normalizeTask({ ...fields, id: uid(), done: false, createdAt: new Date().toISOString() });
     if (!task) return null;
     state.tasks.unshift(task);
     state.flashId = task.id;
-    saveTasks();
     render();
+    persist(() => api.create(task));
     return task;
   }
   function updateTask(id, patch) {
@@ -437,40 +579,45 @@
     const updated = normalizeTask({ ...state.tasks[index], ...patch });
     if (!updated) return;
     state.tasks[index] = updated;
-    saveTasks();
     render();
+    persist(() => api.update(id, {
+      title: updated.title,
+      note: updated.note,
+      priority: updated.priority,
+      due: updated.due,
+    }));
   }
   function toggleTask(id, done) {
     const task = state.tasks.find((t) => t.id === id);
     if (!task) return;
     task.done = done;
     task.completedAt = done ? new Date().toISOString() : null;
-    saveTasks();
     render();
+    persist(() => api.update(id, { done, completedAt: task.completedAt }));
   }
   function deleteTask(id) {
     const index = state.tasks.findIndex((t) => t.id === id);
     if (index === -1) return;
     const [task] = state.tasks.splice(index, 1);
-    saveTasks();
     render();
+    persist(() => api.remove(id));
     showToast(`ลบ "${truncate(task.title, 28)}" แล้ว`, () => {
       state.tasks.splice(Math.min(index, state.tasks.length), 0, task);
-      saveTasks();
       render();
+      persist(() => api.create(task)); // สร้างกลับด้วย id เดิม
     });
   }
   function clearDoneTasks() {
-    const doneCount = state.tasks.filter((t) => t.done).length;
-    if (doneCount === 0) return;
+    const removed = state.tasks.filter((t) => t.done);
+    if (removed.length === 0) return;
     const snapshot = state.tasks.slice();
     state.tasks = state.tasks.filter((t) => !t.done);
-    saveTasks();
     render();
-    showToast(`ล้างงานที่เสร็จแล้ว ${doneCount} รายการ`, () => {
+    persist(() => api.removeDone());
+    showToast(`ล้างงานที่เสร็จแล้ว ${removed.length} รายการ`, () => {
       state.tasks = snapshot;
-      saveTasks();
       render();
+      persist(() => api.create(removed));
     });
   }
 
@@ -659,11 +806,45 @@
   });
   els.sheetClose.addEventListener('click', () => closeDialog(els.addSheet));
 
+  /* ---------- ใช้งานบนอุปกรณ์อื่น (แชร์ลิงก์บอร์ด) ---------- */
+  function openShareDialog() {
+    els.shareUrl.value = shareUrl();
+    els.shareBoard.textContent = state.boardId;
+    els.shareOffline.hidden = state.mode === 'remote';
+    openDialog(els.shareDialog);
+  }
+  async function copyShareUrl() {
+    const text = els.shareUrl.value;
+    let copied = false;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        copied = true;
+      }
+    } catch { /* ใช้วิธีสำรองด้านล่าง */ }
+    if (!copied) {
+      els.shareUrl.focus();
+      els.shareUrl.select();
+      try { copied = document.execCommand('copy'); } catch { copied = false; }
+    }
+    showToast(copied ? 'คัดลอกลิงก์แล้ว นำไปเปิดบนอุปกรณ์อื่นได้เลย' : 'คัดลอกอัตโนมัติไม่ได้ กรุณาคัดลอกลิงก์ด้วยตนเอง');
+  }
+  els.shareBtn.addEventListener('click', openShareDialog);
+  els.shareClose.addEventListener('click', () => closeDialog(els.shareDialog));
+  els.shareCopy.addEventListener('click', copyShareUrl);
+  els.shareUrl.addEventListener('focus', () => els.shareUrl.select());
+
   /* ---------- ซิงก์ข้ามแท็บ + รีเฟรชตอนเที่ยงคืน ---------- */
   window.addEventListener('storage', (e) => {
     if (e.key !== STORAGE_KEY) return;
-    state.tasks = loadTasks() || [];
+    state.tasks = loadCache() || [];
     render();
+  });
+  // กลับมาที่แท็บนี้อีกครั้ง → ดึงข้อมูลล่าสุดจากคลาวด์ (เผื่อแก้จากอุปกรณ์อื่น)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && state.mode === 'remote' && state.pending === 0) {
+      refreshFromServer();
+    }
   });
   function updateTodayLabel() {
     els.todayLabel.textContent = longDateFmt.format(new Date());
@@ -680,11 +861,7 @@
   }
 
   /* ---------- เริ่มต้น ---------- */
-  function init() {
-    const loaded = loadTasks();
-    state.tasks = loaded === null ? sampleTasks() : loaded;
-    if (loaded === null) saveTasks();
-
+  async function init() {
     loadPrefs();
     els.sort.value = state.sort;
 
@@ -692,11 +869,51 @@
     renderPriorityPicker(els.editPriorityPicker, 'edit-priority', DEFAULT_PRIORITY);
     setupDialog(els.addSheet);
     setupDialog(els.editDialog);
+    setupDialog(els.shareDialog);
     placeAddSection(compactMq.matches);
-
     updateTodayLabel();
     scheduleMidnightRefresh();
+
+    // 1) รหัสบอร์ด + แคชในเครื่อง → แสดงผลทันที
+    const board = resolveBoardId();
+    state.boardId = board.id;
+    const cached = board.changed ? null : loadCache(); // เปลี่ยนบอร์ดจากลิงก์ → ไม่ใช้แคชของบอร์ดเก่า
+    state.tasks = cached || [];
+    state.loading = true;
+    setSyncStatus('syncing');
     render();
+
+    // 2) โหลดจากคลาวด์
+    try {
+      const { tasks } = await api.list();
+      let remote = tasks.map(normalizeTask).filter(Boolean);
+
+      // ครั้งแรกที่เครื่องนี้ใช้งานคลาวด์: ถ้าบอร์ดยังว่างแต่มีงานในเครื่องอยู่แล้ว ให้ย้ายขึ้นคลาวด์
+      if (board.source === 'new' && remote.length === 0 && cached && cached.length > 0) {
+        const created = await api.create(cached);
+        remote = created.tasks.map(normalizeTask).filter(Boolean);
+        showToast(`ย้ายงาน ${remote.length} รายการจากเครื่องขึ้นคลาวด์แล้ว`);
+      }
+
+      state.mode = 'remote';
+      state.tasks = remote;
+      cacheTasks();
+    } catch (err) {
+      // ใช้ไม่ได้ (เช่น ยังไม่ได้ตั้งค่า DATABASE_URL หรือออฟไลน์) → โหมดบันทึกในเครื่อง
+      console.warn('ใช้โหมดบันทึกในเครื่อง:', err.message);
+      state.mode = 'local';
+      if (cached === null) {
+        state.tasks = sampleTasks();
+        cacheTasks();
+      }
+      showToast(err.status === 503
+        ? 'ยังไม่ได้ตั้งค่าฐานข้อมูล · ข้อมูลจะบันทึกในเครื่องนี้'
+        : 'เชื่อมต่อคลาวด์ไม่ได้ · ข้อมูลจะบันทึกในเครื่องนี้');
+    } finally {
+      state.loading = false;
+      settleSyncStatus();
+      render();
+    }
   }
 
   init();

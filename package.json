@@ -1,0 +1,16 @@
+{
+  "name": "liquid-tasks",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Liquid Tasks - เว็บจัดการงานธีมขาว Liquid Glass เก็บข้อมูลบน Neon Postgres ผ่าน Vercel Functions",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "deploy": "vercel --prod"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.2.0"
+  }
+}

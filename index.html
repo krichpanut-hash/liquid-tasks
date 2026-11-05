@@ -42,6 +42,17 @@
           <span class="progress-fill" id="progress-fill"></span>
         </div>
       </div>
+
+      <div class="topbar-side">
+        <span class="sync is-syncing" id="sync-status" role="status" aria-live="polite">
+          <span class="sync-dot" aria-hidden="true"></span>
+          <span id="sync-text">กำลังเชื่อมต่อ…</span>
+        </span>
+        <button type="button" class="btn btn-ghost btn-small" id="share-btn">
+          <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          <span>อุปกรณ์อื่น</span>
+        </button>
+      </div>
     </header>
 
     <div class="layout">
@@ -192,6 +203,31 @@
         <button type="submit" class="btn btn-primary">บันทึก</button>
       </div>
     </form>
+  </dialog>
+
+  <!-- Dialog ใช้งานบนอุปกรณ์อื่น -->
+  <dialog class="dialog glass" id="share-dialog" aria-labelledby="share-heading">
+    <div class="card-head">
+      <h2 id="share-heading">ใช้งานบนอุปกรณ์อื่น</h2>
+      <button type="button" class="icon-btn" id="share-close" aria-label="ปิด">
+        <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <p class="dialog-text">
+      เปิดลิงก์นี้บนมือถือ แท็บเล็ต หรือคอมเครื่องอื่น เพื่อใช้รายการงานชุดเดียวกัน
+      ข้อมูลทั้งหมดถูกเก็บบนคลาวด์และซิงก์ให้อัตโนมัติ
+    </p>
+    <div class="share-link">
+      <input id="share-url" type="text" readonly aria-label="ลิงก์สำหรับอุปกรณ์อื่น">
+      <button type="button" class="btn btn-primary" id="share-copy">คัดลอก</button>
+    </div>
+    <p class="dialog-text small muted">
+      ลิงก์นี้คือกุญแจเข้าถึงงานของคุณ — ใครมีลิงก์จะเห็นและแก้ไขงานได้ จึงไม่ควรโพสต์สาธารณะ<br>
+      รหัสบอร์ด: <code id="share-board"></code>
+    </p>
+    <p class="dialog-text small warn" id="share-offline" hidden>
+      ตอนนี้อยู่ในโหมดออฟไลน์ (บันทึกในเครื่อง) ลิงก์จะใช้ซิงก์ได้เมื่อเชื่อมต่อฐานข้อมูลสำเร็จ
+    </p>
   </dialog>
 
   <!-- Toast แจ้งเตือน + ปุ่มเลิกทำ -->

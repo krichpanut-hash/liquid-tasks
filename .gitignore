@@ -5,6 +5,9 @@ desktop.ini
 .vscode/
 .idea/
 
+# Node
+node_modules/
+
 # ไฟล์ชั่วคราว
 *.log
 *.tmp
