@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#f5f7fc">
+  <title>Liquid Tasks · จัดการงานของคุณ</title>
+  <meta name="description" content="เว็บจัดการรายการงาน ธีมสีขาวสไตล์ Liquid Glass รองรับคอมพิวเตอร์ แท็บเล็ต และมือถือ">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- พื้นหลังแบบ liquid (ก้อนสีเบลอที่ค่อย ๆ ลอย) -->
+  <div class="backdrop" aria-hidden="true">
+    <span class="blob blob-a"></span>
+    <span class="blob blob-b"></span>
+    <span class="blob blob-c"></span>
+    <span class="blob blob-d"></span>
+  </div>
+
+  <div class="app">
+    <header class="topbar glass">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg>
+        </span>
+        <div class="brand-text">
+          <h1>Liquid Tasks</h1>
+          <p id="today-label" class="muted">—</p>
+        </div>
+      </div>
+
+      <div class="progress" aria-label="ความคืบหน้าโดยรวม">
+        <div class="progress-row">
+          <span id="progress-label">ยังไม่มีงาน</span>
+          <span id="progress-ratio" class="muted">0 / 0</span>
+        </div>
+        <div class="progress-track" id="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <span class="progress-fill" id="progress-fill"></span>
+        </div>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar" id="sidebar">
+        <section class="glass card add-card" id="add-section" aria-labelledby="add-heading">
+          <div class="card-head">
+            <h2 id="add-heading">เพิ่มงานใหม่</h2>
+            <button type="button" class="icon-btn sheet-close" id="sheet-close" aria-label="ปิด">
+              <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+
+          <form id="task-form" novalidate>
+            <label class="field">
+              <span class="field-label">ชื่องาน <b class="req" aria-hidden="true">*</b></span>
+              <input id="task-title" name="title" type="text" maxlength="120" placeholder="เช่น ส่งรายงานประจำเดือน" autocomplete="off" required>
+              <small class="field-error" id="title-error" hidden>กรุณากรอกชื่องาน</small>
+            </label>
+
+            <label class="field">
+              <span class="field-label">รายละเอียด</span>
+              <textarea id="task-note" name="note" rows="2" maxlength="500" placeholder="เพิ่มรายละเอียดเพิ่มเติม (ไม่บังคับ)"></textarea>
+            </label>
+
+            <div class="field">
+              <span class="field-label" id="prio-legend">ระดับความสำคัญ</span>
+              <div class="priority-picker" id="priority-picker" role="radiogroup" aria-labelledby="prio-legend"></div>
+            </div>
+
+            <label class="field">
+              <span class="field-label">กำหนดส่ง</span>
+              <input id="task-due" name="due" type="date">
+            </label>
+
+            <button type="submit" class="btn btn-primary btn-block">
+              <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+              <span>เพิ่มงาน</span>
+            </button>
+          </form>
+        </section>
+
+        <section class="glass card" aria-labelledby="summary-heading">
+          <h2 id="summary-heading">สรุปภาพรวม</h2>
+          <ul class="stats">
+            <li><strong id="stat-total">0</strong><span>ทั้งหมด</span></li>
+            <li><strong id="stat-pending">0</strong><span>ยังไม่เสร็จ</span></li>
+            <li><strong id="stat-done">0</strong><span>เสร็จแล้ว</span></li>
+            <li><strong id="stat-overdue" class="danger">0</strong><span>เลยกำหนด</span></li>
+          </ul>
+          <h3 class="sub-heading">งานค้างตามความสำคัญ</h3>
+          <ul class="prio-stats" id="prio-stats"></ul>
+        </section>
+      </aside>
+
+      <main class="content">
+        <div class="glass toolbar">
+          <label class="search">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="search" type="search" placeholder="ค้นหางาน…" aria-label="ค้นหางาน">
+          </label>
+
+          <div class="chips" id="status-filter" role="group" aria-label="กรองตามสถานะ">
+            <button type="button" class="chip is-active" data-status="all" aria-pressed="true">ทั้งหมด <span class="chip-count" id="count-all">0</span></button>
+            <button type="button" class="chip" data-status="pending" aria-pressed="false">ยังไม่เสร็จ <span class="chip-count" id="count-pending">0</span></button>
+            <button type="button" class="chip" data-status="done" aria-pressed="false">เสร็จแล้ว <span class="chip-count" id="count-done">0</span></button>
+          </div>
+
+          <div class="toolbar-controls">
+            <label class="select">
+              <span class="sr-only">กรองตามความสำคัญ</span>
+              <select id="priority-filter">
+                <option value="all">ทุกระดับ</option>
+                <option value="5">5 · เร่งด่วน</option>
+                <option value="4">4 · สูง</option>
+                <option value="3">3 · ปานกลาง</option>
+                <option value="2">2 · ต่ำ</option>
+                <option value="1">1 · ต่ำมาก</option>
+              </select>
+            </label>
+            <label class="select">
+              <span class="sr-only">เรียงลำดับ</span>
+              <select id="sort">
+                <option value="priority">เรียง: ความสำคัญ</option>
+                <option value="due">เรียง: กำหนดส่ง</option>
+                <option value="newest">เรียง: ใหม่ล่าสุด</option>
+                <option value="oldest">เรียง: เก่าสุด</option>
+                <option value="title">เรียง: ชื่องาน</option>
+              </select>
+            </label>
+            <button type="button" class="btn btn-ghost" id="clear-done">ล้างที่เสร็จแล้ว</button>
+          </div>
+        </div>
+
+        <ul class="task-list" id="task-list" aria-live="polite" aria-label="รายการงาน"></ul>
+
+        <div class="glass empty" id="empty-state" hidden>
+          <div class="empty-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg>
+          </div>
+          <h2 id="empty-title">ยังไม่มีงาน</h2>
+          <p id="empty-text" class="muted">เพิ่มงานแรกของคุณได้เลย</p>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- ปุ่มลอยสำหรับหน้าจอเล็ก (มือถือ/แท็บเล็ต) -->
+  <button type="button" class="fab" id="fab" aria-label="เพิ่มงานใหม่">
+    <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+  </button>
+
+  <!-- Bottom sheet: ฟอร์มเพิ่มงานจะถูกย้ายมาไว้ที่นี่บนหน้าจอเล็ก -->
+  <dialog class="sheet" id="add-sheet" aria-label="เพิ่มงานใหม่"></dialog>
+
+  <!-- Dialog แก้ไขงาน -->
+  <dialog class="dialog glass" id="edit-dialog" aria-labelledby="edit-heading">
+    <form id="edit-form" novalidate>
+      <div class="card-head">
+        <h2 id="edit-heading">แก้ไขงาน</h2>
+        <button type="button" class="icon-btn" id="edit-close" aria-label="ปิด">
+          <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <label class="field">
+        <span class="field-label">ชื่องาน <b class="req" aria-hidden="true">*</b></span>
+        <input id="edit-title" type="text" maxlength="120" autocomplete="off" required>
+        <small class="field-error" id="edit-title-error" hidden>กรุณากรอกชื่องาน</small>
+      </label>
+
+      <label class="field">
+        <span class="field-label">รายละเอียด</span>
+        <textarea id="edit-note" rows="3" maxlength="500"></textarea>
+      </label>
+
+      <div class="field">
+        <span class="field-label" id="edit-prio-legend">ระดับความสำคัญ</span>
+        <div class="priority-picker" id="edit-priority-picker" role="radiogroup" aria-labelledby="edit-prio-legend"></div>
+      </div>
+
+      <label class="field">
+        <span class="field-label">กำหนดส่ง</span>
+        <input id="edit-due" type="date">
+      </label>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="edit-cancel">ยกเลิก</button>
+        <button type="submit" class="btn btn-primary">บันทึก</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Toast แจ้งเตือน + ปุ่มเลิกทำ -->
+  <div class="toast glass" id="toast" role="status" aria-live="polite" hidden>
+    <span id="toast-text"></span>
+    <button type="button" class="btn btn-link" id="toast-undo">เลิกทำ</button>
+  </div>
+
+  <template id="task-template">
+    <li class="task glass">
+      <span class="task-stripe" aria-hidden="true"></span>
+      <label class="check">
+        <input type="checkbox" class="check-input">
+        <span class="check-box" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg>
+        </span>
+      </label>
+      <div class="task-body">
+        <div class="task-head">
+          <h3 class="task-title"></h3>
+          <span class="badge"></span>
+        </div>
+        <p class="task-note"></p>
+        <div class="task-meta">
+          <span class="meta due">
+            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            <span class="due-text"></span>
+          </span>
+          <span class="meta created"></span>
+        </div>
+      </div>
+      <div class="task-actions">
+        <button type="button" class="icon-btn" data-action="edit" aria-label="แก้ไขงาน" title="แก้ไข">
+          <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        </button>
+        <button type="button" class="icon-btn danger" data-action="delete" aria-label="ลบงาน" title="ลบ">
+          <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+        </button>
+      </div>
+    </li>
+  </template>
+
+  <noscript>
+    <div class="glass noscript">เว็บนี้ต้องเปิดใช้งาน JavaScript เพื่อจัดการรายการงาน</div>
+  </noscript>
+
+  <script src="app.js" defer></script>
+</body>
+</html>

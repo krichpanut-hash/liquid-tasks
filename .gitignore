@@ -1,0 +1,10 @@
+# ระบบปฏิบัติการ / เอดิเตอร์
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# ไฟล์ชั่วคราว
+*.log
+*.tmp
