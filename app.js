@@ -814,16 +814,32 @@
   function updateTodayLabel() {
     els.todayLabel.textContent = longDateFmt.format(new Date());
   }
+
+  /* ตัวจับเวลาเที่ยงคืนอย่างเดียวไม่พอ: ระหว่างเครื่อง sleep หรือแท็บอยู่เบื้องหลัง ตัวจับเวลาจะหยุด/ถูกหน่วง
+     จึงเช็ควันซ้ำทุกนาที และทุกครั้งที่กลับมาที่แท็บ แล้วอัปเดตเฉพาะเมื่อวันเปลี่ยนจริง */
+  let currentDay = '';
+  function refreshDateIfChanged() {
+    const today = todayISO();
+    if (today === currentDay) return;
+    currentDay = today;
+    updateTodayLabel();
+    render();
+  }
   function scheduleMidnightRefresh() {
     const now = new Date();
     const next = new Date(now);
     next.setHours(24, 0, 0, 0);
     setTimeout(() => {
-      updateTodayLabel();
-      render();
+      refreshDateIfChanged();
       scheduleMidnightRefresh();
     }, next - now + 1000);
   }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') refreshDateIfChanged();
+  });
+  window.addEventListener('focus', refreshDateIfChanged);
+  window.addEventListener('pageshow', refreshDateIfChanged);
+  setInterval(refreshDateIfChanged, 60000);
 
   /* ---------- เริ่มต้น ---------- */
   async function init() {
@@ -836,6 +852,7 @@
     setupDialog(els.editDialog);
     setupDialog(els.deleteDialog);
     placeAddSection(compactMq.matches);
+    currentDay = todayISO();
     updateTodayLabel();
     scheduleMidnightRefresh();
 
